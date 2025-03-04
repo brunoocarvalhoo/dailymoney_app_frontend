@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import api from '@/constants/api';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface Transaction {
   id: number;
@@ -15,15 +16,20 @@ interface Transaction {
 
 export default function HomeScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [refresh, setRefresh] = useState(false);
+//   const addTransaction = (newTransaction) => {
+//   setTransactions(prev => [...prev, newTransaction]);
+//   setRefresh(!refresh); // Muda o estado para forçar a atualização
+// };
 
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     api.get('http://192.168.100.110:3000/api/transactions')
-      .then(response => {
-        console.log(response.data);
-        setTransactions(response.data);
-      })
+      .then(response => setTransactions(response.data))
       .catch(error => console.error('Erro ao buscar transações', error));
-  }, []);
+  }, [])
+);
+
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
