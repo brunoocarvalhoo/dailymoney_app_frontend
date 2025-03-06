@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Button, Modal, TouchableOpacity } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '@/constants/api';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 
 interface Transaction {
   id: number;
@@ -16,29 +18,65 @@ interface Transaction {
 
 export default function HomeScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [refresh, setRefresh] = useState(false);
-//   const addTransaction = (newTransaction) => {
-//   setTransactions(prev => [...prev, newTransaction]);
-//   setRefresh(!refresh); // Muda o estado para forçar a atualização
-// };
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-useFocusEffect(
-  useCallback(() => {
-    api.get('http://192.168.100.110:3000/api/transactions')
-      .then(response => setTransactions(response.data))
-      .catch(error => console.error('Erro ao buscar transações', error));
-  }, [])
-);
+  useFocusEffect(
+    useCallback(() => {
+      api.get('http://192.168.100.110:3000/api/transactions')
+        .then(response => {
+          setTransactions(response.data);
+          setFilteredTransactions(response.data);
+        })
+        .catch(error => console.error('Erro ao buscar transações', error));
+      
+      api.get('http://192.168.100.110:3000/api/categories')
+        .then(response => setCategories(response.data))
+        .catch(error => console.error('Erro ao buscar categorias', error));
+    }, [])
+  );
 
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('pt-BR').format(date);
+  };
+
+  const removeFilters = () => {
+    setSelectedCategory('');
+    setStartDate(new Date);
+    setEndDate(new Date);
+    setFilteredTransactions(transactions);
+  }
+
+  const applyFilters = () => {
+    let filtered = transactions;
+
+    if (selectedCategory) {
+      filtered = filtered.filter(item => item.category.name === selectedCategory);
+    }
+    
+    if (startDate && endDate) {
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date);
+        return itemDate >= startDate && itemDate <= endDate;
+      });
+    }
+    
+    setFilteredTransactions(filtered);
+    setIsModalVisible(false);
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Minhas Transações</Text>
+      <TouchableOpacity style={styles.filterButton} onPress={() => setIsModalVisible(true)}>
+        <Text style={styles.filterButtonText}>Filtrar</Text>
+      </TouchableOpacity>
 
       <View style={styles.tableHeader}>
         <Text style={styles.headerText}>Descrição</Text>
@@ -48,17 +86,70 @@ useFocusEffect(
       </View>
 
       <FlatList
-        data={transactions}
+        data={filteredTransactions}
         keyExtractor={item => String(item.id)}
         renderItem={({ item }) => (
           <View style={styles.tableRow}>
             <Text style={styles.cell}>{item.description}</Text>
             <Text style={styles.cell}>R$ {item.amount}</Text>
-            <Text style={styles.cell}>{formatDate(item.date)}</Text>
+            <Text style={styles.cell}>{formatDate(new Date(item.date))}</Text>
             <Text style={styles.cell}>{item.category.name}</Text>
           </View>
         )}
       />
+
+      <Modal visible={isModalVisible} transparent animationType="fade">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filtrar Transações</Text>
+            
+            <Text>Categoria:</Text>
+            <View style={styles.selectBox}>
+              {categories.map(cat => (
+                <TouchableOpacity key={cat.id} onPress={() => setSelectedCategory(cat.name)}>
+                  <Text style={selectedCategory === cat.name ? styles.selectedItem : styles.item}>{cat.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <Text>Data Inicial:</Text>
+            <TouchableOpacity onPress={() => setShowStartDatePicker(true)}>
+              <Text style={styles.input}>{formatDate(startDate)}</Text>
+            </TouchableOpacity>
+            {showStartDatePicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowStartDatePicker(false);
+                  if (date) setStartDate(date);
+                }}
+              />
+            )}
+            
+            <Text>Data Final:</Text>
+            <TouchableOpacity onPress={() => setShowEndDatePicker(true)}>
+              <Text style={styles.input}>{formatDate(endDate)}</Text>
+            </TouchableOpacity>
+            {showEndDatePicker && (
+              <DateTimePicker
+                value={endDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowEndDatePicker(false);
+                  if (date) setEndDate(date);
+                }}
+              />
+            )}
+            
+            <Button title="Aplicar Filtros" onPress={applyFilters} />
+            <Button title="Remove Filtros" onPress={removeFilters} />
+            <Button title="Fechar" color="red" onPress={() => setIsModalVisible(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -76,6 +167,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 10,
     marginTop: 30,
+  },
+  filterButton: {
+    backgroundColor: '#34495e',
+    padding: 10,
+    borderRadius: 5,
+    alignSelf: 'center',
+    marginBottom: 10
+  },
+  filterButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
   tableHeader: {
     flexDirection: 'row',
@@ -102,5 +204,35 @@ const styles = StyleSheet.create({
     flex: 1,
     color: 'white',
     textAlign: 'center',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  selectBox: {
+    marginBottom: 10,
+  },
+  selectedItem: {
+    fontWeight: 'bold',
+    color: 'blue',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 5,
+    marginBottom: 10,
   },
 });
